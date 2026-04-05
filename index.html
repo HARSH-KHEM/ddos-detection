@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Real-time DDoS attack detection system using Machine Learning on SDN networks. Analyze traffic patterns with Random Forest, Decision Tree, KNN, Logistic Regression, and XGBoost." />
+<title>DDoS Detection System — SDN ML Project</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root {
+    --bg: #050a12;
+    --surface: rgba(13,21,32,0.85);
+    --surface2: rgba(17,28,46,0.7);
+    --border: rgba(255,255,255,0.06);
+    --border2: rgba(255,255,255,0.1);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #3b82f6;
+    --green: #10b981;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+    --font: 'Inter', system-ui, sans-serif;
+    --glow-green: 0 0 20px rgba(16,185,129,0.3);
+    --glow-red: 0 0 20px rgba(239,68,68,0.3);
+    --glow-blue: 0 0 20px rgba(59,130,246,0.2);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; overflow-x: hidden; }
+
+  /* ── Canvas background ── */
+  #bg-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+
+  /* ── Live Metrics Bar ── */
+  .live-bar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(5,10,18,0.92); backdrop-filter: blur(16px) saturate(1.5);
+    border-bottom: 1px solid var(--border2);
+    padding: 8px 20px; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+  }
+  .live-bar .lb-left { display: flex; align-items: center; gap: 16px; }
+  .live-bar .lb-right { display: flex; align-items: center; gap: 12px; }
+  .lb-metric { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .lb-metric .label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .lb-metric .value { font-family: var(--font-mono); font-weight: 600; font-size: 14px; color: var(--accent); transition: color 0.5s; }
+  .lb-divider { width: 1px; height: 20px; background: var(--border2); }
+
+  /* Backend status indicator */
+  .backend-status {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.05em;
+    padding: 4px 12px; border-radius: 20px;
+    border: 1px solid var(--border2); transition: all 0.4s;
+  }
+  .backend-status.online { color: var(--green); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.06); }
+  .backend-status.offline { color: var(--red); border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); }
+  .backend-status .status-dot { width: 7px; height: 7px; border-radius: 50%; transition: all 0.4s; }
+  .backend-status.online .status-dot { background: var(--green); box-shadow: 0 0 8px rgba(16,185,129,0.6); }
+  .backend-status.offline .status-dot { background: var(--red); box-shadow: 0 0 8px rgba(239,68,68,0.6); }
+
+  /* ── Threat Meter ── */
+  .threat-meter-wrap { display: flex; align-items: center; gap: 8px; }
+  .threat-meter {
+    width: 120px; height: 6px; border-radius: 3px;
+    background: var(--surface2); overflow: hidden; position: relative;
+  }
+  .threat-meter-fill {
+    height: 100%; border-radius: 3px; width: 0%;
+    transition: width 0.8s cubic-bezier(.4,0,.2,1), background 0.5s;
+    background: var(--green);
+  }
+  .threat-meter-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  /* ── Layout ── */
+  .wrapper { position: relative; z-index: 1; max-width: 1360px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  /* ── Header ── */
+  header { text-align: center; margin-bottom: 28px; }
+  .badge { display: inline-block; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.15em; color: var(--accent); border: 0.5px solid rgba(59,130,246,0.4); padding: 4px 14px; border-radius: 20px; margin-bottom: 12px; background: rgba(59,130,246,0.06); }
+  header h1 { font-size: clamp(22px, 4vw, 38px); font-weight: 700; letter-spacing: -0.03em; margin-bottom: 6px; }
+  header p { font-size: 14px; color: var(--muted); }
+  .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-right: 6px; animation: pulse 2s infinite; vertical-align: middle; }
+  @keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(16,185,129,0.4)} 50%{opacity:0.8;box-shadow:0 0 0 8px rgba(16,185,129,0)} }
+
+  /* ── Grid ── */
+  .main-grid { display: grid; grid-template-columns: 380px 1fr; gap: 16px; margin-bottom: 16px; }
+  .bottom-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .bottom-grid { grid-template-columns: 1fr; }
+    .live-bar { padding: 6px 12px; }
+    .live-bar .lb-left { flex-wrap: wrap; gap: 8px; }
+    .lb-divider { display: none; }
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface); border: 0.5px solid var(--border2); border-radius: 16px;
+    padding: 20px; backdrop-filter: blur(12px) saturate(1.3);
+    transition: border-color 0.5s, box-shadow 0.5s;
+  }
+  .card:hover { border-color: rgba(59,130,246,0.15); }
+  .card-title { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .card-title .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); transition: background 0.5s, box-shadow 0.5s; }
+  .card-title .dot.green { background: var(--green); box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+  .card-title .dot.red { background: var(--red); animation: pulse-red 1.5s infinite; box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+  @keyframes pulse-red { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.4)} 50%{box-shadow:0 0 0 6px rgba(239,68,68,0)} }
+
+  /* ── Form ── */
+  .fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .field label { font-size: 10px; letter-spacing: 0.08em; color: var(--muted); display: block; margin-bottom: 4px; text-transform: uppercase; font-weight: 500; }
+  .field input, .field select {
+    width: 100%; background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 8px;
+    color: var(--text); font-family: var(--font-mono); font-size: 13px; padding: 8px 10px;
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .field input:focus, .field select:focus { border-color: rgba(59,130,246,0.5); box-shadow: 0 0 0 3px rgba(59,130,246,0.08); }
+  .field select option { background: var(--surface2); }
+
+  .btn {
+    width: 100%; padding: 12px; background: linear-gradient(135deg, #3b82f6, #2563eb);
+    border: none; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 600;
+    cursor: pointer; letter-spacing: 0.02em; transition: all 0.3s; margin-bottom: 10px;
+    position: relative; overflow: hidden;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(59,130,246,0.3); }
+  .btn:active { transform: scale(0.98); }
+  .btn.loading { opacity: 0.7; pointer-events: none; }
+  .btn.loading::after {
+    content: ''; position: absolute; top: 50%; left: 50%; width: 18px; height: 18px;
+    margin: -9px 0 0 -9px; border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .btn.outline { background: transparent; border: 0.5px solid var(--border2); color: var(--text); font-size: 12px; padding: 8px; }
+  .btn.outline:hover { border-color: rgba(59,130,246,0.4); background: rgba(59,130,246,0.04); }
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* ── Result ── */
+  .result-hero {
+    border-radius: 14px; padding: 24px; text-align: center; margin-bottom: 14px;
+    transition: all 0.6s cubic-bezier(.4,0,.2,1);
+    border: 0.5px solid var(--border2); background: var(--surface2);
+    position: relative; overflow: hidden;
+  }
+  .result-hero::before {
+    content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+    background: radial-gradient(circle, transparent 60%, currentColor 100%);
+    opacity: 0; transition: opacity 0.6s;
+  }
+  .result-hero.normal { background: rgba(16,185,129,0.06); border-color: rgba(16,185,129,0.25); box-shadow: var(--glow-green); }
+  .result-hero.ddos { background: rgba(239,68,68,0.06); border-color: rgba(239,68,68,0.3); box-shadow: var(--glow-red); }
+  .result-status { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; transition: color 0.4s; }
+  .result-status.normal { color: var(--green); }
+  .result-status.ddos { color: var(--red); }
+  .result-main { font-size: 30px; font-weight: 800; color: var(--muted); letter-spacing: -0.02em; transition: color 0.4s; }
+  .result-main.normal { color: var(--green); }
+  .result-main.ddos { color: var(--red); }
+  .result-model { font-size: 11px; color: var(--muted); margin-top: 8px; font-family: var(--font-mono); }
+
+  .conf-row { margin-bottom: 10px; }
+  .conf-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+  .conf-track { height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .conf-fill { height: 100%; border-radius: 3px; transition: width 0.8s cubic-bezier(.4,0,.2,1); width: 0%; }
+  .conf-fill.green { background: linear-gradient(90deg, #059669, #10b981); }
+  .conf-fill.red { background: linear-gradient(90deg, #dc2626, #ef4444); }
+
+  /* ── Metric cards ── */
+  .metrics-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .mc { background: var(--surface2); border-radius: 10px; padding: 10px 12px; border: 0.5px solid var(--border); transition: border-color 0.3s; }
+  .mc:hover { border-color: rgba(59,130,246,0.2); }
+  .mc-label { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .mc-value { font-size: 18px; font-weight: 700; font-family: var(--font-mono); }
+
+  /* ── Algo bars ── */
+  .algo-item { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 0.5px solid var(--border); font-size: 12px; }
+  .algo-item:last-child { border-bottom: none; }
+  .algo-name { width: 110px; color: var(--muted); flex-shrink: 0; font-weight: 500; }
+  .algo-track { flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+  .algo-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, #2563eb, #3b82f6); transition: width 1s cubic-bezier(.4,0,.2,1); }
+  .algo-score { width: 42px; text-align: right; font-weight: 600; font-family: var(--font-mono); }
+
+  /* ── 3D Canvas panels ── */
+  .canvas-panel { position: relative; overflow: hidden; min-height: 240px; }
+  .canvas-panel canvas { width: 100% !important; height: 100% !important; display: block; }
+  #globe-canvas, #graph-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+  /* ── Error toast ── */
+  .error-toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 200;
+    background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3);
+    color: #fca5a5; padding: 12px 20px; border-radius: 12px;
+    font-size: 13px; backdrop-filter: blur(12px);
+    transform: translateY(100px); opacity: 0; transition: all 0.4s;
+    max-width: 380px;
+  }
+  .error-toast.show { transform: translateY(0); opacity: 1; }
+
+  /* ── Footer ── */
+  footer { text-align: center; margin-top: 40px; font-size: 11px; color: var(--muted); }
+  footer span { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<!-- Live Metrics Bar -->
+<div class="live-bar" id="live-bar">
+  <div class="lb-left">
+    <div class="lb-metric">
+      <span class="label">Pkt Rate</span>
+      <span class="value" id="live-pktrate">0</span><span style="color:var(--muted);font-size:10px">/s</span>
+    </div>
+    <div class="lb-divider"></div>
+    <div class="lb-metric">
+      <span class="label">Flows</span>
+      <span class="value" id="live-flows">0</span>
+    </div>
+    <div class="lb-divider"></div>
+    <div class="lb-metric threat-meter-wrap">
+      <span class="threat-meter-label">Threat</span>
+      <div class="threat-meter"><div class="threat-meter-fill" id="threat-fill"></div></div>
+      <span class="value" id="live-threat" style="font-size:12px;min-width:32px">0%</span>
+    </div>
+  </div>
+  <div class="lb-right">
+    <div class="backend-status offline" id="backend-status">
+      <div class="status-dot"></div>
+      <span id="backend-label">Connecting...</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrapper">
+
+  <!-- Header -->
+  <header>
+    <div class="badge">SE-206 · Machine Learning · SDN Security</div>
+    <h1><span class="pulse"></span>DDoS Detection System</h1>
+    <p>Real-time network traffic classification using 5 ML algorithms · Harsh Khem & Kartik Ojha</p>
+  </header>
+
+  <!-- Main Grid -->
+  <div class="main-grid">
+
+    <!-- Input Panel -->
+    <div class="card">
+      <div class="card-title"><span class="dot green"></span>Traffic Inspector</div>
+
+      <div class="fields-grid">
+        <div class="field"><label>Packet Count</label><input type="number" id="pktcount" value="45304" /></div>
+        <div class="field"><label>Byte Count</label><input type="number" id="bytecount" value="48294064" /></div>
+        <div class="field"><label>Packet Rate</label><input type="number" id="pktrate" value="451" /></div>
+        <div class="field"><label>Flow Count</label><input type="number" id="flows" value="3" /></div>
+        <div class="field"><label>TX kbps</label><input type="number" id="tx_kbps" value="0" /></div>
+        <div class="field"><label>RX kbps</label><input type="number" id="rx_kbps" value="0" /></div>
+        <div class="field"><label>Total kbps</label><input type="number" id="tot_kbps" value="0" /></div>
+        <div class="field"><label>Packet Ins</label><input type="number" id="packetins" value="12" /></div>
+        <div class="field"><label>Bytes/Flow</label><input type="number" id="byteperflow" value="1066" /></div>
+        <div class="field"><label>Pkts/Flow</label><input type="number" id="pktperflow" value="10" /></div>
+      </div>
+
+      <div class="field" style="margin-bottom:14px;">
+        <label>Protocol</label>
+        <select id="protocol">
+          <option value="0">UDP</option>
+          <option value="1">TCP</option>
+          <option value="2">ICMP</option>
+        </select>
+      </div>
+
+      <button class="btn" id="detect-btn" onclick="runDetection()">⚡ Run Detection</button>
+      <div class="btn-row">
+        <button class="btn outline" onclick="loadPreset('normal')">✓ Normal Traffic</button>
+        <button class="btn outline" onclick="loadPreset('ddos')">⚠ DDoS Attack</button>
+      </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div class="card">
+      <div class="card-title"><span class="dot" id="result-dot"></span>Detection Result</div>
+
+      <div class="result-hero" id="result-hero">
+        <div class="result-status" id="result-status">Awaiting Analysis</div>
+        <div class="result-main" id="result-main">—</div>
+        <div class="result-model" id="result-model"></div>
+      </div>
+
+      <div class="conf-row">
+        <div class="conf-label"><span>Normal Traffic</span><span id="pct-normal">—</span></div>
+        <div class="conf-track"><div class="conf-fill green" id="bar-normal"></div></div>
+      </div>
+      <div class="conf-row">
+        <div class="conf-label"><span>DDoS Attack</span><span id="pct-ddos">—</span></div>
+        <div class="conf-track"><div class="conf-fill red" id="bar-ddos"></div></div>
+      </div>
+
+      <div class="metrics-row" style="margin-top:16px;">
+        <div class="mc"><div class="mc-label">Best F1</div><div class="mc-value" style="color:var(--green)">0.9997</div></div>
+        <div class="mc"><div class="mc-label">Best AUC</div><div class="mc-value" style="color:var(--accent)">1.0000</div></div>
+        <div class="mc"><div class="mc-label">Dataset</div><div class="mc-value" style="font-size:13px;color:var(--muted)">104K rows</div></div>
+      </div>
+
+      <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Algorithm Comparison (F1 Score)</div>
+      <div class="algo-item"><span class="algo-name">Random Forest</span><div class="algo-track"><div class="algo-fill" style="width:99.7%"></div></div><span class="algo-score">0.9971</span></div>
+      <div class="algo-item"><span class="algo-name">Decision Tree</span><div class="algo-track"><div class="algo-fill" style="width:98%"></div></div><span class="algo-score">0.9800</span></div>
+      <div class="algo-item"><span class="algo-name">KNN</span><div class="algo-track"><div class="algo-fill" style="width:95.1%"></div></div><span class="algo-score">0.9506</span></div>
+      <div class="algo-item"><span class="algo-name">Logistic Reg.</span><div class="algo-track"><div class="algo-fill" style="width:89.8%"></div></div><span class="algo-score">0.8980</span></div>
+      <div class="algo-item"><span class="algo-name">XGBoost*</span><div class="algo-track"><div class="algo-fill" style="width:85.5%"></div></div><span class="algo-score">0.8545</span></div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px;">* from-scratch NumPy implementation</div>
+    </div>
+  </div>
+
+  <!-- Bottom 3D Panels -->
+  <div class="bottom-grid">
+
+    <!-- 3D Particle Network -->
+    <div class="card canvas-panel" style="min-height:280px;">
+      <div class="card-title" style="position:relative;z-index:2;"><span class="dot"></span>Particle Network</div>
+      <canvas id="particle-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;border-radius:16px;"></canvas>
+    </div>
+
+    <!-- 3D Globe -->
+    <div class="card canvas-panel" style="min-height:280px;">
+      <div class="card-title" style="position:relative;z-index:2;"><span class="dot"></span>Attack Globe</div>
+      <canvas id="globe-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;border-radius:16px;"></canvas>
+    </div>
+
+    <!-- 3D Network Graph -->
+    <div class="card canvas-panel" style="min-height:280px;">
+      <div class="card-title" style="position:relative;z-index:2;"><span class="dot"></span>Network Graph</div>
+      <canvas id="graph-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;border-radius:16px;"></canvas>
+    </div>
+
+  </div>
+
+  <footer>
+    <p>SDN-Based DDoS Detection · Machine Learning SE-206 · <span>Harsh Khem 24/SE/071</span> &amp; <span>Kartik Ojha 24/SE/087</span></p>
+  </footer>
+</div>
+
+<!-- Error Toast -->
+<div class="error-toast" id="error-toast"></div>
+
+<script>
+// ─── Config ──────────────────────────────────────────────────────────────────
+const API_BASE = 'http://localhost:5050';
+let backendOnline = false;
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let isDDoS = false;
+let threatLevel = 0; // 0-1
+
+// ─── Animated counter helper ─────────────────────────────────────────────────
+function animateValue(el, start, end, duration) {
+  const startTime = performance.now();
+  const diff = end - start;
+  function tick(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = start + diff * eased;
+    el.textContent = Math.round(current).toLocaleString();
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// ─── Update live metrics bar ────────────────────────────────────────────────
+function updateLiveBar() {
+  const pktrate = +document.getElementById('pktrate').value || 0;
+  const flows = +document.getElementById('flows').value || 0;
+
+  animateValue(document.getElementById('live-pktrate'), 0, pktrate, 600);
+  animateValue(document.getElementById('live-flows'), 0, flows, 600);
+
+  const threatPct = Math.round(threatLevel * 100);
+  document.getElementById('live-threat').textContent = threatPct + '%';
+
+  const fill = document.getElementById('threat-fill');
+  fill.style.width = threatPct + '%';
+  if (threatLevel < 0.3) { fill.style.background = 'var(--green)'; document.getElementById('live-threat').style.color = 'var(--green)'; }
+  else if (threatLevel < 0.6) { fill.style.background = 'var(--yellow)'; document.getElementById('live-threat').style.color = 'var(--yellow)'; }
+  else { fill.style.background = 'var(--red)'; document.getElementById('live-threat').style.color = 'var(--red)'; }
+}
+
+// ─── Backend Health Check ──────────────────────────────────────────────────
+async function checkBackend() {
+  const statusEl = document.getElementById('backend-status');
+  const labelEl = document.getElementById('backend-label');
+  try {
+    const res = await fetch(API_BASE + '/health', { signal: AbortSignal.timeout(3000) });
+    const data = await res.json();
+    if (data.status === 'healthy') {
+      backendOnline = true;
+      statusEl.className = 'backend-status online';
+      labelEl.textContent = 'ML Model Online';
+    }
+  } catch (e) {
+    backendOnline = false;
+    statusEl.className = 'backend-status offline';
+    labelEl.textContent = 'Backend Offline';
+  }
+}
+checkBackend();
+setInterval(checkBackend, 15000);
+
+// ─── Error toast ──────────────────────────────────────────────────────────
+function showError(msg) {
+  const el = document.getElementById('error-toast');
+  el.textContent = '⚠ ' + msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 5000);
+}
+
+// ─── Presets ─────────────────────────────────────────────────────────────────
+const presets = {
+  normal: { pktcount:45304, bytecount:48294064, pktrate:451, flows:3, tx_kbps:0, rx_kbps:0, tot_kbps:0, packetins:12, byteperflow:1066, pktperflow:10, protocol:0 },
+  ddos:   { pktcount:980000, bytecount:1200000, pktrate:9800, flows:450, tx_kbps:950000, rx_kbps:2100, tot_kbps:952100, packetins:8900, byteperflow:12, pktperflow:2, protocol:0 }
+};
+function loadPreset(t) { const p=presets[t]; Object.keys(p).forEach(k=>{ const el=document.getElementById(k); if(el) el.value=p[k]; }); }
+
+// ─── Sigmoid fallback ─────────────────────────────────────────────────────
+function sigmoid(x) { return 1/(1+Math.exp(-x)); }
+
+function fallbackDetection() {
+  const pktrate = +document.getElementById('pktrate').value;
+  const flows = +document.getElementById('flows').value;
+  const tot_kbps = +document.getElementById('tot_kbps').value;
+  const packetins = +document.getElementById('packetins').value;
+  const byteperflow = +document.getElementById('byteperflow').value;
+  const pktperflow = +document.getElementById('pktperflow').value;
+  let score = 0;
+  if (pktrate > 2000) score += 2.5; else if (pktrate > 800) score += 1.2;
+  if (flows > 50) score += 2.0; else if (flows > 15) score += 0.8;
+  if (tot_kbps > 100000) score += 1.8; else if (tot_kbps > 20000) score += 0.7;
+  if (packetins > 1000) score += 2.0; else if (packetins > 200) score += 0.9;
+  if (byteperflow < 50) score += 2.2; else if (byteperflow < 200) score += 0.6;
+  if (pktperflow < 5) score += 1.5;
+  const prob_ddos = Math.min(0.99, Math.max(0.01, sigmoid(score - 3.5)));
+  return { prediction: prob_ddos > 0.5 ? 1 : 0, probability_normal: 1 - prob_ddos, probability_ddos: prob_ddos, model_used: 'Heuristic (Offline)' };
+}
+
+// ─── Detection Logic ──────────────────────────────────────────────────────────
+async function runDetection() {
+  const btn = document.getElementById('detect-btn');
+  btn.classList.add('loading');
+  btn.textContent = '';
+
+  let result;
+  try {
+    if (backendOnline) {
+      const payload = {};
+      ['pktcount','bytecount','pktrate','flows','tx_kbps','rx_kbps','tot_kbps','packetins','byteperflow','pktperflow'].forEach(k => {
+        payload[k] = +(document.getElementById(k).value);
+      });
+      payload.protocol = +(document.getElementById('protocol').value);
+
+      const res = await fetch(API_BASE + '/predict', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload), signal: AbortSignal.timeout(10000)
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Prediction failed'); }
+      result = await res.json();
+    } else {
+      result = fallbackDetection();
+    }
+  } catch (e) {
+    showError('Backend error: ' + e.message + '. Using heuristic fallback.');
+    result = fallbackDetection();
+  }
+
+  btn.classList.remove('loading');
+  btn.textContent = '⚡ Run Detection';
+
+  // Apply result
+  const prob_ddos = result.probability_ddos;
+  const prob_normal = result.probability_normal;
+  isDDoS = result.prediction === 1;
+  threatLevel = prob_ddos;
+
+  const hero = document.getElementById('result-hero');
+  const status = document.getElementById('result-status');
+  const main = document.getElementById('result-main');
+  const dot = document.getElementById('result-dot');
+  const modelEl = document.getElementById('result-model');
+
+  hero.className = 'result-hero ' + (isDDoS ? 'ddos' : 'normal');
+  status.className = 'result-status ' + (isDDoS ? 'ddos' : 'normal');
+  status.textContent = isDDoS ? 'Threat Detected' : 'Traffic Normal';
+  main.className = 'result-main ' + (isDDoS ? 'ddos' : 'normal');
+  main.textContent = isDDoS ? 'DDoS Attack' : 'Normal';
+  dot.className = 'dot ' + (isDDoS ? 'red' : 'green');
+  modelEl.textContent = 'Model: ' + (result.model_used || 'RandomForest');
+
+  document.getElementById('bar-normal').style.width = (prob_normal*100).toFixed(1)+'%';
+  document.getElementById('bar-ddos').style.width   = (prob_ddos*100).toFixed(1)+'%';
+  document.getElementById('pct-normal').textContent = (prob_normal*100).toFixed(1)+'%';
+  document.getElementById('pct-ddos').textContent   = (prob_ddos*100).toFixed(1)+'%';
+
+  updateLiveBar();
+}
+
+// ─── BG Particle Canvas (Three.js) ───────────────────────────────────────────
+(function initBG() {
+  const canvas = document.getElementById('bg-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
+  camera.position.z = 30;
+
+  const geo = new THREE.BufferGeometry();
+  const N = 1200;
+  const pos = new Float32Array(N*3);
+  const colors = new Float32Array(N*3);
+  for (let i=0; i<N; i++) {
+    pos[i*3] = (Math.random()-0.5)*80;
+    pos[i*3+1] = (Math.random()-0.5)*60;
+    pos[i*3+2] = (Math.random()-0.5)*40;
+    colors[i*3] = 0.12; colors[i*3+1] = 0.23; colors[i*3+2] = 0.37;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({ size: 0.2, transparent: true, opacity: 0.5, vertexColors: true });
+  const points = new THREE.Points(geo, mat);
+  scene.add(points);
+
+  function resize() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); }
+  resize(); window.addEventListener('resize', resize);
+
+  let t = 0;
+  (function loop() {
+    requestAnimationFrame(loop);
+    t += 0.003;
+    const c = colors;
+    const threatR = isDDoS ? 0.5 : 0.12, threatG = isDDoS ? 0.12 : 0.23, threatB = isDDoS ? 0.12 : 0.37;
+    for (let i = 0; i < N; i++) {
+      c[i*3] += (threatR - c[i*3]) * 0.01;
+      c[i*3+1] += (threatG - c[i*3+1]) * 0.01;
+      c[i*3+2] += (threatB - c[i*3+2]) * 0.01;
+      const speed = isDDoS ? 0.03 : 0.005;
+      pos[i*3+1] += Math.sin(t + i) * speed;
+    }
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+    scene.rotation.y = t * 0.08;
+    renderer.render(scene, camera);
+  })();
+})();
+
+// ─── Particle Network (small canvas) ─────────────────────────────────────────
+(function initParticles() {
+  const canvas = document.getElementById('particle-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+  camera.position.z = 8;
+
+  const nodes = [];
+  const N = 36;
+  const nodeMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
+  const nodeGeo = new THREE.SphereGeometry(0.06, 8, 8);
+
+  for (let i=0; i<N; i++) {
+    const m = new THREE.Mesh(nodeGeo, nodeMat.clone());
+    m.position.set((Math.random()-0.5)*7, (Math.random()-0.5)*5, (Math.random()-0.5)*3);
+    const speed = 0.006 + Math.random() * 0.006;
+    m.userData.vel = new THREE.Vector3((Math.random()-0.5)*speed,(Math.random()-0.5)*speed,0);
+    scene.add(m); nodes.push(m);
+  }
+
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x1e3a5f, transparent: true, opacity: 0.4 });
+  let lineObj = null;
+
+  function buildLines() {
+    if (lineObj) scene.remove(lineObj);
+    const geo = new THREE.BufferGeometry();
+    const pts = [];
+    const maxDist = isDDoS ? 3.2 : 2.2;
+    for (let i=0; i<N; i++) for (let j=i+1; j<N; j++) {
+      if (nodes[i].position.distanceTo(nodes[j].position) < maxDist)
+        pts.push(nodes[i].position.x, nodes[i].position.y, nodes[i].position.z, nodes[j].position.x, nodes[j].position.y, nodes[j].position.z);
+    }
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    lineObj = new THREE.LineSegments(geo, lineMat);
+    scene.add(lineObj);
+  }
+
+  function resize() { const w=canvas.clientWidth, h=canvas.clientHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+
+  let t = 0;
+  (function loop() {
+    requestAnimationFrame(loop);
+    t += 0.01;
+    resize();
+    const speedMult = isDDoS ? 3 : 1;
+    nodes.forEach(n => {
+      n.position.add(n.userData.vel.clone().multiplyScalar(speedMult));
+      if (Math.abs(n.position.x) > 3.5) n.userData.vel.x *= -1;
+      if (Math.abs(n.position.y) > 2.5) n.userData.vel.y *= -1;
+      const c = isDDoS ? new THREE.Color(0xef4444) : new THREE.Color(0x3b82f6);
+      n.material.color.lerp(c, 0.05);
+      const s = isDDoS ? 1 + Math.sin(t*6 + n.position.x)*0.4 : 1;
+      n.scale.set(s,s,s);
+    });
+    if (Math.round(t*10) % 3 === 0) buildLines();
+    lineMat.color.set(isDDoS ? 0x7f1d1d : 0x1e3a5f);
+    lineMat.opacity = isDDoS ? 0.6 : 0.4;
+    scene.rotation.y = Math.sin(t*0.2)*0.3;
+    renderer.render(scene, camera);
+  })();
+})();
+
+// ─── Globe ────────────────────────────────────────────────────────────────────
+(function initGlobe() {
+  const canvas = document.getElementById('globe-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+  camera.position.z = 4;
+
+  const globeGeo = new THREE.SphereGeometry(1.5, 32, 32);
+  const globeMat = new THREE.MeshBasicMaterial({ color: 0x0d1520 });
+  const globe = new THREE.Mesh(globeGeo, globeMat);
+  scene.add(globe);
+
+  const wireMat = new THREE.MeshBasicMaterial({ color: 0x1e3a5f, wireframe: true, transparent: true, opacity: 0.35 });
+  const wire = new THREE.Mesh(new THREE.SphereGeometry(1.52, 20, 20), wireMat);
+  scene.add(wire);
+
+  const arcGroup = new THREE.Group();
+  scene.add(arcGroup);
+
+  function latLonToVec(lat, lon, r) {
+    const phi = (90-lat)*Math.PI/180, theta = (lon+180)*Math.PI/180;
+    return new THREE.Vector3(-r*Math.sin(phi)*Math.cos(theta), r*Math.cos(phi), r*Math.sin(phi)*Math.sin(theta));
+  }
+
+  const attackPoints = [[35,105],[51,-0.1],[37,-122],[55,37],[1,103],[40,116],[-23,-43],[48,2],[28,77],[39,116]];
+  attackPoints.forEach(([lat,lon]) => {
+    const start = latLonToVec(lat, lon, 1.52);
+    const end = latLonToVec(0, 0, 0.1);
+    const mid = start.clone().lerp(end, 0.5).multiplyScalar(1.8);
+    const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+    const pts = curve.getPoints(20);
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0 });
+    arcGroup.add(new THREE.Line(geo, mat));
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.03,6,6), new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0 }));
+    dot.position.copy(start); arcGroup.add(dot);
+  });
+
+  function resize() { const w=canvas.clientWidth, h=canvas.clientHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+
+  let t = 0;
+  (function loop() {
+    requestAnimationFrame(loop); t += 0.005; resize();
+    globe.rotation.y += 0.004; wire.rotation.y += 0.004; arcGroup.rotation.y += 0.004;
+    const targetOpacity = isDDoS ? 0.7 : 0;
+    arcGroup.children.forEach(child => { if (child.material) child.material.opacity += (targetOpacity - child.material.opacity) * 0.05; });
+    wireMat.color.set(isDDoS ? 0x7f1d1d : 0x1e3a5f);
+    wireMat.opacity = isDDoS ? 0.5 : 0.35;
+    renderer.render(scene, camera);
+  })();
+})();
+
+// ─── Network Graph (3D) ───────────────────────────────────────────────────────
+(function initGraph() {
+  const canvas = document.getElementById('graph-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
+  camera.position.z = 7;
+
+  const nodes = [
+    { label:'Controller', pos:[0,0,0], type:'controller' },
+    { label:'SW1', pos:[-2,1.5,0], type:'switch' }, { label:'SW2', pos:[2,1.5,0], type:'switch' },
+    { label:'SW3', pos:[-2,-1.5,0], type:'switch' }, { label:'SW4', pos:[2,-1.5,0], type:'switch' },
+    { label:'H1', pos:[-3.5,2.5,0], type:'host' }, { label:'H2', pos:[-0.5,3,0], type:'host' },
+    { label:'H3', pos:[3.5,2.5,0], type:'host' }, { label:'H4', pos:[0.5,3,0], type:'host' },
+    { label:'H5', pos:[-3.5,-2.5,0], type:'host' }, { label:'H6', pos:[3.5,-2.5,0], type:'host' },
+  ];
+  const edges = [[0,1],[0,2],[0,3],[0,4],[1,2],[1,5],[1,6],[2,7],[2,8],[3,9],[4,10]];
+
+  const meshes = nodes.map(n => {
+    const r = n.type==='controller' ? 0.22 : n.type==='switch' ? 0.14 : 0.09;
+    const col = n.type==='controller' ? 0xf59e0b : n.type==='switch' ? 0x3b82f6 : 0x10b981;
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r,10,10), new THREE.MeshBasicMaterial({ color: col }));
+    m.position.set(...n.pos); scene.add(m); return m;
+  });
+
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x1e3a5f, transparent: true, opacity: 0.5 });
+  edges.forEach(([a,b]) => {
+    const geo = new THREE.BufferGeometry().setFromPoints([meshes[a].position, meshes[b].position]);
+    scene.add(new THREE.LineSegments(geo, edgeMat.clone()));
+  });
+
+  function resize() { const w=canvas.clientWidth, h=canvas.clientHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+
+  let t = 0;
+  (function loop() {
+    requestAnimationFrame(loop); t += 0.008; resize();
+    scene.rotation.y = Math.sin(t*0.3)*0.4; scene.rotation.x = Math.sin(t*0.2)*0.15;
+    const ctrl = meshes[0];
+    if (isDDoS) { const s=1+Math.sin(t*8)*0.25; ctrl.scale.set(s,s,s); ctrl.material.color.set(0xef4444); }
+    else { ctrl.scale.set(1,1,1); ctrl.material.color.set(0xf59e0b); }
+    edgeMat.color.set(isDDoS ? 0x7f1d1d : 0x1e3a5f);
+    renderer.render(scene, camera);
+  })();
+})();
+</script>
+</body>
+</html>
