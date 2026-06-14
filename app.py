@@ -475,10 +475,44 @@ def mcp_query():
             verify=False
         )
         
-        return jsonify({
+        mcp_data = response.json()
+        ai_analysis = None
+        
+        if query and GROQ_API_KEY:
+            try:
+                prompt = (
+                    "You are a cybersecurity analyst. Analyze this Splunk query result from a DDoS "
+                    "detection system and provide: 1) A brief summary of what the data shows, 2) Any anomalies "
+                    "or concerns, 3) Recommended actions. Keep response under 150 words and return ONLY valid JSON "
+                    "with keys: summary, anomalies, recommendations. Do not use markdown blocks.\n\n"
+                    f"Results:\n{json.dumps(mcp_data)}"
+                )
+                
+                client = Groq(api_key=GROQ_API_KEY)
+                chat_completion = client.chat.completions.create(
+                    model='llama-3.3-70b-versatile',
+                    messages=[{'role': 'user', 'content': prompt}],
+                    temperature=0.3,
+                    max_tokens=500,
+                    response_format={"type": "json_object"}
+                )
+                
+                response_text = chat_completion.choices[0].message.content
+                try:
+                    ai_analysis = json.loads(response_text)
+                except json.JSONDecodeError:
+                    ai_analysis = {"raw_response": response_text}
+            except Exception as ai_e:
+                ai_analysis = {"error": str(ai_e)}
+        
+        result_payload = {
             "status": "success",
-            "mcp_response": response.json()
-        })
+            "mcp_response": mcp_data
+        }
+        if ai_analysis:
+            result_payload["ai_analysis"] = ai_analysis
+            
+        return jsonify(result_payload)
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
