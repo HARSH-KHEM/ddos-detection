@@ -11,9 +11,11 @@ flowchart TD
     C --> F[Splunk MCP Server\nMCP Protocol]
     D --> G[Splunk Dashboard\nLive Visualization]
     G --> H[Native ML Predict\nTraffic Forecasting]
-    F --> G
-    E --> I[Incident Report\nSeverity + IOC + Actions]
-    F --> J[splunk_run_query\nReal-time Data Access]
+    F --> I[splunk_run_query\nReal-time Data Access]
+    I --> J[Groq AI Analysis\nSummary + Anomalies\n+ Recommendations]
+    E --> K[Incident Report\nSeverity + IOC + Actions]
+    J --> L[Agentic Intelligence\nFull Autonomous Response]
+    K --> L
 
     style A fill:#1a1a2e,color:#fff
     style B fill:#16213e,color:#fff
@@ -23,6 +25,8 @@ flowchart TD
     style F fill:#2b9348,color:#fff
     style G fill:#e94560,color:#fff
     style H fill:#e94560,color:#fff
-    style I fill:#533483,color:#fff
+    style I fill:#2b9348,color:#fff
     style J fill:#2b9348,color:#fff
+    style K fill:#533483,color:#fff
+    style L fill:#f5a623,color:#000
 ```
