@@ -25,6 +25,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, accuracy_score, f1_score, roc_auc_score
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import warnings
+
+
+warnings.filterwarnings('ignore')
+
 
 app = Flask(__name__)
 CORS(app)
@@ -49,6 +54,10 @@ SPLUNK_HEC_HEADERS = {
 
 # ─── Groq API Key ──────────────────────────────────────────────────────────────
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+
+# ─── Splunk MCP Server Configuration ───────────────────────────────────────────
+SPLUNK_MCP_URL = "https://localhost:8089/services/mcp"
+SPLUNK_MCP_TOKEN = os.environ.get('SPLUNK_MCP_TOKEN')
 
 # ─── Feature columns expected by the model ─────────────────────────────────────
 EXPECTED_FEATURES = [
@@ -428,6 +437,52 @@ Respond ONLY with valid JSON, no markdown formatting."""
         }), 502
 
 
+@app.route('/mcp_query', methods=['POST'])
+def mcp_query():
+    try:
+        data = request.get_json(force=True)
+        query = data.get('query')
+        
+        if not query:
+            payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+                "params": {}
+            }
+        else:
+            payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "splunk_run_query",
+                    "arguments": {
+                        "query": query,
+                        "earliest_time": "-24h",
+                        "latest_time": "now"
+                    }
+                }
+            }
+        
+        response = http_requests.post(
+            SPLUNK_MCP_URL,
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {SPLUNK_MCP_TOKEN}",
+                "Content-Type": "application/json"
+            },
+            verify=False
+        )
+        
+        return jsonify({
+            "status": "success",
+            "mcp_response": response.json()
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ─── Diagnostic Endpoint ──────────────────────────────────────────────────────
 
 @app.route('/test', methods=['GET'])
@@ -437,7 +492,8 @@ def test_diagnostics():
         'timestamp': datetime.now(timezone.utc).isoformat(),
         'splunk_hec': {'status': 'untested'},
         'groq_api': {'status': 'untested'},
-        'ml_model': {'status': 'untested'}
+        'ml_model': {'status': 'untested'},
+        'splunk_mcp_token_check': 'Splunk MCP Token: Found' if SPLUNK_MCP_TOKEN else 'Splunk MCP Token: Not Found'
     }
 
     # ── Test 1: Splunk HEC ──
@@ -557,6 +613,12 @@ def print_startup_status():
         print(f"[✓] Groq API Key: Found ({masked})")
     else:
         print("[✗] Groq API Key: Missing (set GROQ_API_KEY env var)")
+
+    # Splunk MCP Token
+    if SPLUNK_MCP_TOKEN:
+        print("[✓] Splunk MCP Token: Found")
+    else:
+        print("[✗] Splunk MCP Token: Not Found")
 
     # Model
     if model is not None:
