@@ -1,0 +1,81 @@
+<dashboard version="1.1" theme="dark">
+  <label>DDoS Detection Monitor</label>
+  <row>
+    <panel>
+      <single>
+        <title>Total Events</title>
+        <search>
+          <query>index=main sourcetype=ddos_detection | stats count</query>
+          <earliest>0</earliest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>DDoS Attacks Detected</title>
+        <search>
+          <query>index=main sourcetype=ddos_detection prediction_label=DDoS | stats count</query>
+          <earliest>0</earliest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Normal Traffic</title>
+        <search>
+          <query>index=main sourcetype=ddos_detection prediction_label=Normal | stats count</query>
+          <earliest>0</earliest>
+        </search>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Traffic Classification Over Time</title>
+        <search>
+          <query>index=main sourcetype=ddos_detection | timechart span=1m count by prediction_label</query>
+          <earliest>0</earliest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Attack vs Normal Traffic</title>
+        <search>
+          <query>index=main sourcetype=ddos_detection | stats count by prediction_label</query>
+          <earliest>0</earliest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Splunk AI — Traffic Prediction (Native ML)</title>
+        <search>
+          <query>index=main sourcetype=ddos_detection | timechart span=1m count as event_count | predict event_count future_timespan=5 holdback=0</query>
+          <earliest>0</earliest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Recent HIGH Severity Events</title>
+        <search>
+          <query>index=main sourcetype=ddos_detection severity=HIGH | table _time, prediction_label, confidence, severity | sort -_time | head 20</query>
+          <earliest>0</earliest>
+        </search>
+      </table>
+    </panel>
+  </row>
+</dashboard>
