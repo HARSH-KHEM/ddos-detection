@@ -122,7 +122,18 @@ http://localhost:8000
 - Visualization: Splunk Enterprise Classic Dashboard
 - Native ML: Splunk predict command for traffic forecasting
 - MCP Integration: Splunk MCP Server (splunk_run_query tool)
+- Splunk Alerts: Real-time threshold alerting for DDoS attacks
 - AI Agent: Groq API — llama-3.3-70b-versatile
+
+## 🔔 Splunk Features Used
+
+| Feature | Purpose |
+|---|---|
+| Splunk HEC | Real-time event ingestion from ML model |
+| Splunk Dashboard | Live traffic visualization with charts |
+| Splunk predict | Native ML for traffic forecasting |
+| Splunk MCP Server | AI agent queries Splunk via MCP protocol |
+| Splunk Alerts | Real-time threshold alerting for DDoS attacks |
 
 ## 👨💻 Author
 
